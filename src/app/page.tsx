@@ -1,103 +1,172 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, FormEvent, ChangeEvent, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { z } from "zod";
+
+// Define Zod schemas for runtime validation
+const SummaryResponseSchema = z.object({
+  summary: z.string(),
+});
+
+const ErrorResponseSchema = z.object({
+  message: z.string(),
+});
+
+type SummaryResponse = z.infer<typeof SummaryResponseSchema>;
+type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+
+// Custom hook for API calls
+const useSummarize = () => {
+  const [summary, setSummary] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const summarizeEmail = async (emailContent: string): Promise<void> => {
+    if (!emailContent.trim()) {
+      setError("Please enter the email content to summarize.");
+      return;
+    }
+
+    setIsLoading(true);
+    setSummary(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/summarize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ emailContent }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const parsedError = ErrorResponseSchema.safeParse(data);
+        if (parsedError.success) {
+          throw new Error(parsedError.data.message || "Failed to summarize email.");
+        } else {
+          throw new Error("An unexpected error occurred while processing the response.");
+        }
+      }
+
+      const parsedSummary = SummaryResponseSchema.safeParse(data);
+      if (parsedSummary.success) {
+        setSummary(parsedSummary.data.summary);
+      } else {
+        throw new Error("Received invalid summary data from the server.");
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { summary, isLoading, error, summarizeEmail, setSummary, setError };
+};
+
+export default function HomePage() {
+  const [emailContent, setEmailContent] = useState<string>("");
+  const { summary, isLoading, error, summarizeEmail, setSummary, setError } = useSummarize();
+
+  const handleEmailChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setEmailContent(event.target.value);
+    // Clear only the error state when user starts typing again
+    if (error) setError(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await summarizeEmail(emailContent);
+  };
+
+  const handleClear = () => {
+    setEmailContent("");
+    setSummary(null);
+    setError(null);
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl bg-gray-800 rounded-lg shadow-xl p-8">
+        <h1 className="text-4xl font-bold text-center mb-8 text-blue-400">
+          Email Summarizer
+        </h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="emailContent" className="block text-lg font-medium mb-2">
+              Enter Email Content:
+            </label>
+            <textarea
+              id="emailContent"
+              rows={10}
+              className="w-full p-4 rounded-lg bg-gray-700 border border-gray-600 focus:ring-blue-500 focus:border-blue-500 shadow-sm resize-none text-gray-200 placeholder-gray-400
+              focus:outline-none"
+              placeholder="Paste your email content here..."
+              value={emailContent}
+              onChange={handleEmailChange}
+              aria-label="Email content input"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <motion.button
+              type="submit"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              disabled={isLoading}
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? "Summarizing..." : "Summarize"}
+            </motion.button>
+            <motion.button
+              type="button"
+              onClick={handleClear}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg shadow-md transition duration-300 ease-in-out"
+            >
+              Clear
+            </motion.button>
+          </div>
+        </form>
+
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="mt-8 p-4 bg-red-500 bg-opacity-20 border border-red-400 text-red-300 rounded-lg"
+              role="alert"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {summary && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="mt-8 p-6 bg-green-500 bg-opacity-20 border border-green-400 text-green-300 rounded-lg"
+            >
+              <h2 className="text-2xl font-semibold mb-4 text-green-300">Summary:</h2>
+              <p className="text-lg leading-relaxed">{summary}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
